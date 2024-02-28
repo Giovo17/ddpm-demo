@@ -14,8 +14,8 @@ from fire import Fire # Automatically generate CLIs from the main function
 from tqdm import tqdm # Progress bar in for loops
 from pydantic import BaseModel # Data validation
 
-from ddpm.ddpm import DDPM
-from ddpm.models import BasicDiscreteTimeModel
+from ddpm import DDPM
+from models import BasicDiscreteTimeModel
 
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True" # not sure if this is necessary
@@ -149,5 +149,5 @@ def main(n_steps: int = 100, d_model: int = 128, n_layers: int = 2, batch_size: 
 
 
 if __name__ == "__main__":
-    #Fire(main)
-    main()
+    Fire(main)
+    #main()
