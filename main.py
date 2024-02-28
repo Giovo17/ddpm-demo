@@ -12,7 +12,7 @@ from matplotlib import animation
 
 from fire import Fire # Automatically generate CLIs from the main function
 from tqdm import tqdm # Progress bar in for loops
-from pydantic import BaseModel
+from pydantic import BaseModel # Data validation
 
 from ddpm.ddpm import DDPM
 from ddpm.models import BasicDiscreteTimeModel
@@ -22,16 +22,18 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "True" # not sure if this is necessary
 
 
 # Set device
-if torch.cuda.is_available():
-    device = torch.device("cuda:0")
-    torch.cuda.empty_cache()
-    print("Using NVIDIA GPU")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-    print("Using Apple GPU")
-else:
-    device = torch.device("cpu")
-    print("Using CPU")
+#if torch.cuda.is_available():
+#    device = torch.device("cuda:0")
+#    torch.cuda.empty_cache()
+#    print("Using NVIDIA GPU")
+#elif torch.backends.mps.is_available():
+#    device = torch.device("mps")
+#    print("Using Apple GPU")
+#else:
+#    device = torch.device("cpu")
+#    print("Using CPU")
+device = torch.device("cpu") # Defaulting on CPU due to some hardware problems
+print("Using CPU")
 
 
 # Set seeds
@@ -51,11 +53,15 @@ set_seed()
 
 
 class TrainResult(BaseModel):
-    losses: List[int]
+    #losses: List[int] #Input should be a valid integer, got a number with a fractional part [type=int_from_float, input_value=0.6689114570617676, input_type=float] For further information visit https://errors.pydantic.dev/2.6/v/int_from_float
+    losses: List[float]
+    samples: List[Any]
+
+class TrainSamples(BaseModel):
     samples: List[Any]
 
 
-def train(model: nn.Module, ddpm: DDPM, batch_size: int = 128, n_epochs: int = 400, sample_size: int = 512,
+def train(model: nn.Module, ddpm: DDPM, batch_size: int = 128, n_epochs: int = 400, lr: float = 1e-3, sample_size: int = 512,
           steps_between_sampling: int = 20, device: str = "cpu") -> TrainResult:
 
     assert batch_size > 0 and steps_between_sampling > 0 and sample_size > 0
@@ -63,7 +69,7 @@ def train(model: nn.Module, ddpm: DDPM, batch_size: int = 128, n_epochs: int = 4
     N = 1 << 10 # Bitwise left shifting: N = 1*2^10
     X = make_swiss_roll(n_samples=N, noise=1e-1)[0][:, [0, 2]] / 10.0
 
-    optim = Adam(model.parameters(), 1e-3)
+    optim = Adam(model.parameters(), lr=lr)
 
     losses: List[float] = []
     samples: List[Any] = []
@@ -92,12 +98,17 @@ def train(model: nn.Module, ddpm: DDPM, batch_size: int = 128, n_epochs: int = 4
                     samples.append(ddpm.sample(model, n_samples=sample_size))
                 step += 1
     
-    return TrainResult(losses=losses, samples=samples)
+    #return TrainResult(losses=losses, samples=samples)
+    return TrainSamples(samples=samples)
 
 
 def animate(samples: List[Any], save: bool = True, path: str = ""):
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.set(xlim=(-2.0, 2.0), ylim=(-2.0, 2.0))
+
+    # Move tensor to cpu() if it is allocated in gpu memory
+    samples[0] = samples[0].cpu() if samples[0].get_device() != -1 else samples[0] 
+
     scat = ax.scatter(*samples[0].detach().numpy().T, c="k", alpha=0.3)
 
     def animate(i):
@@ -113,7 +124,7 @@ def animate(samples: List[Any], save: bool = True, path: str = ""):
 
 
 def main(n_steps: int = 100, d_model: int = 128, n_layers: int = 2, batch_size: int = 128, n_epochs: int = 400,
-         sample_size: int = 512, steps_between_sampling: int = 20):
+         lr: int = 1e-3, sample_size: int = 512, steps_between_sampling: int = 20):
 
     print("Creating model ...")
     model = BasicDiscreteTimeModel(d_model=d_model, n_layers=n_layers).to(device)
@@ -126,6 +137,7 @@ def main(n_steps: int = 100, d_model: int = 128, n_layers: int = 2, batch_size: 
         ddpm=ddpm,
         batch_size=batch_size,
         n_epochs=n_epochs,
+        lr=lr,
         sample_size=sample_size,
         steps_between_sampling=steps_between_sampling,
         device=device
@@ -133,8 +145,9 @@ def main(n_steps: int = 100, d_model: int = 128, n_layers: int = 2, batch_size: 
     print("Training concluded!")
 
     path = os.path.join(os.getcwd(), "outputs", "animation.gif")
-    animate(result.samples, path)
+    animate(result.samples, True, path)
 
 
 if __name__ == "__main__":
-    Fire(main)
+    #Fire(main)
+    main()
